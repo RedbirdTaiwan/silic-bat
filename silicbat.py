@@ -218,7 +218,7 @@ class SilicBat:
     fh = self.mel_to_freq(1-(y-h/2))
     return [ts, te, fl, fh]
 
-  def detect(self, weights, step=1000, conf_thres=0.1, imgsz=640, targetfilepath=None, iou_thres=0.25, soundclasses=None):
+  def detect(self, weights, step=64, conf_thres=0.1, imgsz=640, targetfilepath=None, iou_thres=0.25, soundclasses=None):
     if self.model and self.model_path == weights:
       pass
     else:
