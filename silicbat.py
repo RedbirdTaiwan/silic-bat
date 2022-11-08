@@ -516,6 +516,11 @@ if __name__ == '__main__':
   if os.path.isfile(mainpath):
     browser(mainpath, zip=False)
   else:
+    i = 0
     for dirPath, dirNames, fileNames in os.walk(mainpath):
       for dir in dirNames:
-        browser(os.path.join(dirPath,dir), zip=False)
+        savepath = os.path.join('result_%s_%s'%(i,dir))
+        if not os.path.isdir(savepath):
+          os.mkdir(savepath)
+        browser(os.path.join(dirPath,dir), savepath=savepath, zip=False)
+        i += 1
