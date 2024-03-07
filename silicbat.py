@@ -4,13 +4,12 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from matplotlib import cm
 from pydub import AudioSegment, effects, scipy_effects
-from nnAudio import Spectrogram
+from pydub.utils import mediainfo
+from nnAudio import features
 from yolov5.models.experimental import attempt_load
-from yolov5.utils.datasets import letterbox
-from yolov5.utils.general import non_max_suppression, scale_coords, xyxy2xywh
+from yolov5.utils.dataloaders import letterbox
+from yolov5.utils.general import non_max_suppression, scale_boxes, xyxy2xywh
 from PIL import ImageFont, ImageDraw, Image
-import pathlib
-pathlib.PosixPath = pathlib.WindowsPath
 
 def speed_change(sound, speed=1.0):
     # Manually override the frame_rate. This tells the computer how many
@@ -30,24 +29,25 @@ def AudioStandarize(audio_file, sr=320000, device=None, high_pass=0, ultrasonic=
   filext = audio_file[-3:].lower()
   if filext == "mp3":
       sound = AudioSegment.from_mp3(audio_file)
-  elif filext == "wma":
-      sound = AudioSegment.from_file(audio_file, "wma")
-  elif filext == "m4a":
-      sound = AudioSegment.from_file(audio_file, "m4a")
   elif filext == "ogg":
       sound = AudioSegment.from_ogg(audio_file)
   elif filext == "wav":
       sound = AudioSegment.from_wav(audio_file)
-  elif filext in ["mp4", "wma", "aac"]:
-      sound = AudioSegment.from_file(audio_file, filext)
   else:
-    print('Sorry, this file type is not permitted. The legal extensions are: wav, mp3, wma, m4a, ogg.')
-    return None
+      try:
+          info = mediainfo(audio_file)
+          if info['codec_tag_string'] in ['mp4a']:
+              sound = AudioSegment.from_file(audio_file, "m4a")
+          else:
+              sound = AudioSegment.from_file(audio_file, filext)
+      except:
+        print('Sorry, this file type is not permitted. The legal extensions are: wav, mp3, wma, m4a, ogg.')
+        return None
   original_metadata = {'channel': sound.channels, 'sample_rate':sound.frame_rate, 'sample_size':len(sound.get_array_of_samples()), 'duration':sound.duration_seconds}
   print('Origional audio: channel = %s, sample_rate = %s Hz, sample_size = %s, duration = %s s' %(original_metadata['channel'], original_metadata['sample_rate'], original_metadata['sample_size'], original_metadata['duration']))
   if ultrasonic:
       if sound.frame_rate > 100000: # UltraSonic
-          sound = speed_change(sound, 1/10)
+          sound = speed_change(sound, 1/12)
       else:
           return False
   if sound.frame_rate > sr:
@@ -90,8 +90,8 @@ class SilicBat:
       self.device = device
     else:
       self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-    self.spec_layer = Spectrogram.STFT(sr=sr, n_fft=n_fft, hop_length=hop_length).to(self.device)
-    self.spec_mel_layer = Spectrogram.MelSpectrogram(sr=sr, n_fft=n_fft, n_mels=n_mels, hop_length=hop_length, window='hann', center=True, pad_mode='reflect', power=2.0, htk=False, fmin=fmin, fmax=fmax, norm=1, verbose=True).to(self.device)
+    self.spec_layer = features.STFT(sr=sr, n_fft=n_fft, hop_length=hop_length).to(self.device)
+    self.spec_mel_layer = features.MelSpectrogram(sr=sr, n_fft=n_fft, n_mels=n_mels, hop_length=hop_length, window='hann', center=True, pad_mode='reflect', power=2.0, htk=False, fmin=fmin, fmax=fmax, norm=1, verbose=True).to(self.device)
     self.rainbow_img = torch.tensor([], dtype=torch.float32, device=self.device)
     self.model_path = None
     self.model = None
@@ -115,6 +115,17 @@ class SilicBat:
     return targetmp3path
     
   def spectrogram(self, audiodata, spect_type='linear', rainbow_bands=5):
+    """
+    plt.rcParams['font.size'] = '16'
+    plt.rcParams['axes.grid'] = False
+    plt.rcParams['xtick.labelsize'] = False
+    plt.rcParams['ytick.labelsize'] = False
+    plt.rcParams['xtick.top'] = False
+    plt.rcParams['xtick.bottom'] = False
+    plt.rcParams['ytick.left'] = False
+    plt.rcParams['ytick.right'] = False
+    plt.rcParams.update({'font.size': 16})
+    """
     if spect_type in ['mel', 'rainbow']:
       spec = self.spec_mel_layer(audiodata)
       w = spec.size()[2]/55
@@ -227,18 +238,24 @@ class SilicBat:
     fh = self.mel_to_freq(1-(y-h/2))
     return [ts, te, fl, fh]
 
-  def detect(self, weights, step=100, conf_thres=0.1, imgsz=640, targetfilepath=None, iou_thres=0.25, targetclasses=None):
+  def detect(self, weights, step=100, conf_thres=0.1, imgsz=640, targetfilepath=None, iou_thres=0.25, targetclasses=[]):
     if self.model and self.model_path == weights:
       pass
     else:
       self.model_path = weights
-      model = attempt_load(self.model_path, map_location=self.device)
+      model = attempt_load(self.model_path, device=self.device)
       self.names = model.module.names if hasattr(model, 'module') else model.names
       model.float()
       self.model = model
-      self.soundclasses = pd.read_csv(self.model_path.replace('best.pt', 'soundclasses.csv'), encoding='utf8', index_col='sounclass_id').T.to_dict()
+      self.soundclasses = pd.read_csv(self.model_path.replace('best.pt', 'soundclass.csv'), encoding='utf8', index_col='sounclass_id').T.to_dict()
     if targetclasses:
-      classes = [self.names.index(name) for name in targetclasses]
+      try:
+        classes = [self.names.index(name) for name in targetclasses]
+      except:
+        classes = []
+        for i in self.names.keys():
+          if self.names[i] in targetclasses:
+            classes.append(i)
     else:
       classes = None
     self.tfr(targetfilepath=targetfilepath, spect_type='rainbow')
@@ -278,7 +295,7 @@ class SilicBat:
       for det in pred:    # detections per image
         gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]    # normalization gain whwh
         if len(det):
-          det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
+          det[:, :4] = scale_boxes(img.shape[2:], det[:, :4], im0.shape).round()
           for *xyxy, conf, cls in reversed(det):
             xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()    # normalized xywh
             ttff = self.xywh2ttff(xywh)
@@ -388,7 +405,7 @@ def clean_multi_boxes(labels, threshold_iou=0.25, threshold_iratio=0.5):
           break
       if check:
         if df_results.shape[0] > 0:
-          df_results = df_results.append(df_class[df_class.index == i], ignore_index = True)
+          df_results = pd.concat([df_results, df_class[df_class.index == i]],axis=0, ignore_index=True) 
         else:
           df_results = df_class[df_class.index == i]
   return df_results.sort_values('time_begin').reset_index(drop=True)
@@ -476,7 +493,6 @@ def browser(audiosource, weights='model/exp/best.pt', step=100, targetclasses=[]
     i += 1
     if audio_path:
       shutil.copyfile(audiofile, os.path.join(audio_path, model.audiofilename))
-      #model.save_standarized(targetmp3path=os.path.join(audio_path, model.audiofilename.replace('.wav','.mp3').replace('.WAV','.mp3')))
     model.tfr(targetfilepath=os.path.join(linear_path, model.audiofilename_without_ext+'.png'))
     labels = model.detect(weights=weights, step=step, targetclasses=targetclasses, conf_thres=conf_thres, targetfilepath=os.path.join(rainbow_path, model.audiofilename_without_ext+'.png'))
     if len(labels) == 1:
@@ -486,7 +502,7 @@ def browser(audiosource, weights='model/exp/best.pt', step=100, targetclasses=[]
       newlabels['file'] = model.audiofilename
       newlabels.to_csv(os.path.join(lable_path, model.audiofilename_without_ext+'.csv'), index=False)
       if all_labels.shape[0] > 0:
-        all_labels = all_labels.append(newlabels, ignore_index = True)
+        all_labels = all_labels = pd.concat([all_labels, newlabels],axis=0, ignore_index=True) 
       else:
         all_labels = newlabels
       print("%s sounds of %s species is/are found in %s" %(newlabels.shape[0], len(newlabels['classid'].unique()), audiofile))
@@ -496,7 +512,7 @@ def browser(audiosource, weights='model/exp/best.pt', step=100, targetclasses=[]
   else:
     all_labels.to_csv(os.path.join(lable_path, 'labels.csv'), index=False)
     print('%s sounds of %s species is/are found in %s recording(s). Preparing the browser package ...' %(all_labels.shape[0], len(all_labels['classid'].unique()), i))
-    df_classes = pd.read_csv(weights.replace('best.pt', 'soundclasses.csv'))
+    df_classes = pd.read_csv(weights.replace('best.pt', 'soundclass.csv'))
     if targetclasses:
       df_classes = df_classes[df_classes['sounclass_id'].isin(targetclasses)]
     else:
@@ -522,15 +538,4 @@ def browser(audiosource, weights='model/exp/best.pt', step=100, targetclasses=[]
     print(time.time()-t0, 'used.')
 
 if __name__ == '__main__':
-  mainpath = sys.argv[1]
-  if os.path.isfile(mainpath):
-    browser(mainpath, zip=False)
-  else:
-    i = 0
-    for dirPath, dirNames, fileNames in os.walk(mainpath):
-      for dir in dirNames:
-        savepath = os.path.join('result_%s_%s'%(i,dir))
-        if not os.path.isdir(savepath):
-          os.mkdir(savepath)
-        browser(os.path.join(dirPath,dir), savepath=savepath, zip=False)
-        i += 1
+  browser(sys.argv[1])
