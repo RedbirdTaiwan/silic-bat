@@ -20366,15 +20366,15 @@
             axis_y.append('line').attr('x1', 34).attr('x2', 40).attr('y1', 20 + i * 32).attr('y2', 20 + i * 32).style('stroke', 'black').style('stroke-width', 1);
             var svgText = axis_y.append("text");
             
-            svgText.attr("x", 28).attr("y", i * 32 + 24).attr("text-anchor", "end").text((16 - i) + "k");
+            svgText.attr("x", 34).attr("y", i * 32 + 24).attr("text-anchor", "end").text((16 - i)*12 + "k");
             
         }
         axis_x.append('rect').attr('x', 40).attr('y', 532).attr('width', audiolength * perlength + 800).attr('height', 1).style('fill', 'black');
         
-        for (var i = 0; i <= Math.ceil(audiolength + 1) * 2; i++) {
-            axis_x.append('line').attr('x1', 300 + i * perlength / 50).attr('x2', 300 + i * perlength / 50).attr('y1', 532).attr('y2', 542).style('stroke', 'black').style('stroke-width', 1);
+        for (var i = 0; i <= Math.ceil(audiolength + 1) * 5/6; i++) {
+            axis_x.append('line').attr('x1', 300 + i * perlength *6/5).attr('x2', 300 + i * perlength *6/5).attr('y1', 532).attr('y2', 542).style('stroke', 'black').style('stroke-width', 1);
             var svgText = axis_x.append("text");
-            svgText.attr("x", 300 + perlength / 50 * i).attr("y", 557).attr("text-anchor", "middle").text((i / 50));
+            svgText.attr("x", 300 + perlength *6/5 * i).attr("y", 557).attr("text-anchor", "middle").text((i / 10));
         }
         
     }
